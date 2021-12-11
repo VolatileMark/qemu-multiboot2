@@ -63,6 +63,8 @@ blobs = [
   'petalogix-ml605.dtb',
   'multiboot.bin',
   'multiboot_dma.bin',
+  'multiboot2.bin',
+  'multiboot2_dma.bin',
   'linuxboot.bin',
   'linuxboot_dma.bin',
   'kvmvapic.bin',
