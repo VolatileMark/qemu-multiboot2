@@ -540,7 +540,7 @@ int load_multiboot2(X86MachineState *x86ms,
     memset(&mbs, 0, sizeof(mbs));
 
     current_tag = (struct multiboot_header_tag *)(header + i + sizeof(struct multiboot_header));
-    last_tag = (struct multiboot_header_tag *)(header + header_length);
+    last_tag = (struct multiboot_header_tag *)(header + i + header_length);
     for(; current_tag != last_tag; current_tag = (struct multiboot_header_tag *)((uint8_t*)current_tag + current_tag->size)) {
         // Ignore
     }
