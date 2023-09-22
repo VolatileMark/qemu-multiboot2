@@ -501,11 +501,11 @@ int load_multiboot2(X86MachineState *x86ms,
        The header is in the first 32k. */
     for (i = 0; (i < 32768 - 15) && (i < kernel_file_size - 15) ; i += 4) {
         if (ldl_p(header+i) == MULTIBOOT2_HEADER_MAGIC) {
-	    uint32_t checksum = ldl_p(header+i+12);
-	    architecture = ldl_p(header+i+4);
-	    header_length = ldl_p(header+i+8);
-	    checksum += MULTIBOOT2_HEADER_MAGIC;
-	    checksum += architecture;
+            uint32_t checksum = ldl_p(header+i+12);
+            architecture = ldl_p(header+i+4);
+            header_length = ldl_p(header+i+8);
+            checksum += MULTIBOOT2_HEADER_MAGIC;
+            checksum += architecture;
             checksum += header_length;
             if (!checksum) {
                 is_multiboot = 1;
@@ -518,19 +518,19 @@ int load_multiboot2(X86MachineState *x86ms,
         return 0; /* no multiboot */
 
     switch(architecture) {
-    case MULTIBOOT_ARCHITECTURE_I386:
-	// Start in 32bit mode
-	mb_debug("qemu: architecture i386\n");
-	fw_cfg_add_i32(fw_cfg, FW_CFG_KERNEL_64BIT, 0);
-	break;
-    case MULTIBOOT_ARCHITECTURE_X86_64:
-	// Start in 64bit mode
-	mb_debug("qemu: architecture x86_64\n");
-	fw_cfg_add_i32(fw_cfg, FW_CFG_KERNEL_64BIT, 1);
-	break;
-    default:
-        fprintf(stderr, "qemu: multiboot2 architecture must be i386 or x86_64.\n");
-	exit(1);
+        case MULTIBOOT_ARCHITECTURE_I386:
+            // Start in 32bit mode
+            mb_debug("qemu: architecture i386\n");
+            fw_cfg_add_i32(fw_cfg, FW_CFG_KERNEL_64BIT, 0);
+            break;
+        case MULTIBOOT_ARCHITECTURE_X86_64:
+            // Start in 64bit mode
+            mb_debug("qemu: architecture x86_64\n");
+            fw_cfg_add_i32(fw_cfg, FW_CFG_KERNEL_64BIT, 1);
+            break;
+        default:
+            fprintf(stderr, "qemu: multiboot2 architecture must be i386 or x86_64.\n");
+            exit(1);
     }
 
     mb_debug("qemu: I believe we found a multiboot2 image!\n");
@@ -562,13 +562,13 @@ int load_multiboot2(X86MachineState *x86ms,
     /* Load kernel */
     /* FIXME: only elf support for now */
     {
-	uint64_t elf_entry;
+        uint64_t elf_entry;
         uint64_t elf_low, elf_high;
         int kernel_size;
         fclose(f);
 
         if (((struct elf64_hdr*)header)->e_machine == EM_X86_64) {
-	    mb_debug("qemu: 64bit elf, I hope you know what you are doing\n");
+            mb_debug("qemu: 64bit elf, I hope you know what you are doing\n");
         }
 
         kernel_size = load_elf(kernel_filename, NULL, NULL, NULL, &elf_entry,
@@ -611,16 +611,16 @@ int load_multiboot2(X86MachineState *x86ms,
     mb_debug("      kernel_size  = %#zx\n", (size_t)mbs.mb_buf_size);
     unsigned char *p = mbs.mb_buf;
     for(i = 0; i < 0xff; ++i, ++p) {
-	if (i % 16 == 0) mb_debug("\n0x%02x:", i);
-	mb_debug(" %02x", *p);
+        if (i % 16 == 0) mb_debug("\n0x%02x:", i);
+        mb_debug(" %02x", *p);
     }
     mb_debug("\n");
     mb_debug("      initrd_addr  = %#zx\n", (size_t)MULTIBOOT_MEM);
     mb_debug("      initrd_size  = %#zx\n", (size_t)mbs.mb_tags_size);
     p = mbs.mb_tags;
     for(i = 0; i < mbs.mb_tags_size; ++i, ++p) {
-	if (i % 16 == 0) mb_debug("\n0x%02x:", i);
-	mb_debug(" %02x", *p);
+        if (i % 16 == 0) mb_debug("\n0x%02x:", i);
+        mb_debug(" %02x", *p);
     }
     mb_debug("\n");
 
