@@ -446,7 +446,7 @@ static void mb_add_cmdline(MultibootState *s, const char *cmdline)
     struct multiboot_tag_string *tag;
     unsigned new_size = s->mb_tags_size;
 
-    mb_debug("mb_add_cmline: len = %d '%s'\n", len, cmdline);
+    mb_debug("mb_add_cmdline: len = %d '%s'\n", len, cmdline);
 
     new_size += sizeof(struct multiboot_tag_string) + len;
     new_size = (new_size + 7) & ~7;
@@ -616,7 +616,7 @@ int load_multiboot2(X86MachineState *x86ms,
         }
     }
     mb_add_cmdline(&mbs, kcmdline);
-
+    
     /* Basic memory info */
     ram_size = x86ms->below_4g_mem_size + x86ms->above_4g_mem_size;
     mb_add_basic_meminfo(&mbs, 640, (ram_size / 1024) - 1024);
@@ -692,6 +692,8 @@ int load_multiboot2(X86MachineState *x86ms,
             g_free(one_file);
             tmpl = tmpl->next;
         }
+    } else {
+        mbs.mb_buf_size = TARGET_PAGE_ALIGN(mb_kernel_size);
     }
 
     /* FIXME: add other tags */
