@@ -579,7 +579,7 @@ int load_multiboot2(X86MachineState *x86ms,
             default:
                 mb_debug("multiboot2 loader does not support tags of type %u, yet.\n", current_tag->type);
                 if (!(current_tag->flags & MULTIBOOT_HEADER_TAG_OPTIONAL)) {
-                    fprintf(stderr, "qemu: unsupported multiboot2 tag is not optional.");
+                    fprintf(stderr, "qemu: unsupported multiboot2 tag is not optional.\n");
                     exit(1);
                 }
                 break;
@@ -670,10 +670,10 @@ int load_multiboot2(X86MachineState *x86ms,
             if (next_space) {
                 *(next_space++) = '\0';
             }
-            mb_debug("multiboot2 loading module: %s", one_file);
+            mb_debug("multiboot2 loading module: %s\n", one_file);
             mb_mod_length = get_image_size(one_file);
             if (mb_mod_length < 0) {
-                error_report("Failed to open file '%s'", one_file);
+                error_report("Failed to open file '%s'\n", one_file);
                 exit(1);
             }
             if (align_modules) {
@@ -682,8 +682,8 @@ int load_multiboot2(X86MachineState *x86ms,
             mbs.mb_buf_size += offs + mb_mod_length;
             mbs.mb_buf_size = TARGET_PAGE_ALIGN(mbs.mb_buf_size);
             mbs.mb_buf = g_realloc(mbs.mb_buf, mbs.mb_buf_size);
-            if (load_image_size(one_file, mbs.mb_buf + offs, mb_mod_length)) {
-                error_report("Error loading file: '%s'", one_file);
+            if (load_image_size(one_file, mbs.mb_buf + offs, mb_mod_length) < 0) {
+                error_report("Error loading file: '%s', %s", one_file, strerror(errno));
                 exit(1);
             }
             mb_add_mod(&mbs, mbs.mb_buf_phys + offs,
