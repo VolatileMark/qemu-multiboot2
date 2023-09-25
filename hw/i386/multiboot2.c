@@ -434,6 +434,10 @@ typedef struct {
     unsigned mb_buf_size;
     /* size of tags in bytes */
     unsigned mb_tags_size;
+    /* modules offset */
+    unsigned offset_mods;
+    /* number of modules */
+    unsigned mb_mods_avail;
 } MultibootState;
 
 static void mb_add_cmdline(MultibootState *s, const char *cmdline)
@@ -478,6 +482,27 @@ static void mb_add_basic_meminfo(MultibootState *s, uint32_t mem_lower, uint32_t
     tag->mem_upper = mem_upper;
 }
 
+static void mb_add_mod(MultibootState *s, hwaddr start, hwaddr end, char *cmdline) {
+    struct multiboot_tag_module *tag;
+    unsigned new_size = s->mb_tags_size;
+    
+    unsigned cmdline_len = cmdline ? strlen(cmdline) + 1 : 0;
+    new_size += sizeof(struct multiboot_tag_module) + cmdline_len;
+    new_size = (new_size + 7) & ~7;
+
+    s->mb_tags = g_realloc(s->mb_tags, new_size);
+    tag = (struct multiboot_tag_module *) (s->mb_tags + s->mb_tags_size);
+    s->mb_tags_size = new_size;
+
+    tag->type = MULTIBOOT_TAG_TYPE_MODULE;
+    tag->size = sizeof(struct multiboot_tag_module);
+    tag->mod_start = start;
+    tag->mod_end = end;
+    if (cmdline) {
+        strcpy(tag->cmdline, cmdline);
+    }
+}
+
 int load_multiboot2(X86MachineState *x86ms,
                    FWCfgState *fw_cfg,
                    FILE *f,
@@ -488,7 +513,7 @@ int load_multiboot2(X86MachineState *x86ms,
                    uint8_t *header)
 {
     MultibootState mbs;
-    int i, is_multiboot = 0;
+    int i, is_multiboot = 0, align_modules = 0;
     uint32_t architecture = 0;
     uint32_t header_length = 0;
     struct multiboot_header_tag *current_tag, *last_tag;
@@ -496,6 +521,8 @@ int load_multiboot2(X86MachineState *x86ms,
     uint32_t mh_load_addr;
     uint32_t mb_kernel_size;
     uint32_t ram_size;
+    uint32_t cmdline_len;
+    GList *mods = NULL;
 
     /* Ok, let's see if it is a multiboot image.
        The header is in the first 32k. */
@@ -542,7 +569,21 @@ int load_multiboot2(X86MachineState *x86ms,
     current_tag = (struct multiboot_header_tag *)(header + i + sizeof(struct multiboot_header));
     last_tag = (struct multiboot_header_tag *)(header + i + header_length);
     for(; current_tag != last_tag; current_tag = (struct multiboot_header_tag *)((uint8_t*)current_tag + current_tag->size)) {
-        // Ignore
+        switch (current_tag->type) {
+            case MULTIBOOT_HEADER_TAG_END:
+                // Ignore ending tag.
+                break;
+            case MULTIBOOT_HEADER_TAG_MODULE_ALIGN:
+                align_modules = 1;
+                break;
+            default:
+                mb_debug("multiboot2 loader does not support tags of type %u, yet.\n", current_tag->type);
+                if (!(current_tag->flags & MULTIBOOT_HEADER_TAG_OPTIONAL)) {
+                    fprintf(stderr, "qemu: unsupported multiboot2 tag is not optional.");
+                    exit(1);
+                }
+                break;
+        }
     }
 
     /* Add size field to multiboot info */
@@ -550,9 +591,30 @@ int load_multiboot2(X86MachineState *x86ms,
     mbs.mb_tags_size = 8;
 
     /* Commandline support */
-    char kcmdline[strlen(kernel_filename) + strlen(kernel_cmdline) + 2];
-    snprintf(kcmdline, sizeof(kcmdline), "%s %s",
-             kernel_filename, kernel_cmdline);
+    cmdline_len = strlen(kernel_filename) + 1;
+    cmdline_len += strlen(kernel_cmdline) + 1;
+    char *kcmdline = g_malloc(cmdline_len);
+    snprintf(kcmdline, cmdline_len, "%s %s", kernel_filename, kernel_cmdline);
+    if (initrd_filename) {
+        char *lastchar;
+        const char *r = initrd_filename;
+        uint32_t initrd_len = strlen(initrd_filename) + 1;
+        kcmdline = g_realloc(kcmdline, cmdline_len + initrd_len);
+        memset(kcmdline + cmdline_len, 0, initrd_len);
+        lastchar = &kcmdline[cmdline_len-1];
+        while (*r) {
+            char *value;
+            r = get_opt_value(r, &value);
+            *lastchar = ' ';
+            lastchar = stpcpy(kcmdline + cmdline_len, value);
+            cmdline_len += strlen(value);
+            mbs.mb_mods_avail++;
+            mods = g_list_append(mods, value);
+            if (*r) {
+                r++;
+            }
+        }
+    }
     mb_add_cmdline(&mbs, kcmdline);
 
     /* Basic memory info */
@@ -593,10 +655,45 @@ int load_multiboot2(X86MachineState *x86ms,
     }
 
     /* Align to next page */
-    /* FIXME: honor align header tag */
-    mbs.mb_buf_size = TARGET_PAGE_ALIGN(mb_kernel_size);
-
     /* FIXME: load modules */
+    if (mods) {
+        uint32_t offs;
+        GList *tmpl = mods;
+        mbs.offset_mods = mb_kernel_size;
+        offs = TARGET_PAGE_ALIGN(mbs.offset_mods);
+        while (tmpl) {
+            int mb_mod_length;
+            char *next_space, *one_file = tmpl->data;
+            /* if a space comes after the module filename, treat everything
+               after that as parameters */
+            next_space = strchr(one_file, ' ');
+            if (next_space) {
+                *(next_space++) = '\0';
+            }
+            mb_debug("multiboot2 loading module: %s", one_file);
+            mb_mod_length = get_image_size(one_file);
+            if (mb_mod_length < 0) {
+                error_report("Failed to open file '%s'", one_file);
+                exit(1);
+            }
+            if (align_modules) {
+                offs = TARGET_PAGE_ALIGN(offs);
+            }
+            mbs.mb_buf_size += offs + mb_mod_length;
+            mbs.mb_buf_size = TARGET_PAGE_ALIGN(mbs.mb_buf_size);
+            mbs.mb_buf = g_realloc(mbs.mb_buf, mbs.mb_buf_size);
+            if (load_image_size(one_file, mbs.mb_buf + offs, mb_mod_length)) {
+                error_report("Error loading file: '%s'", one_file);
+                exit(1);
+            }
+            mb_add_mod(&mbs, mbs.mb_buf_phys + offs,
+                       mbs.mb_buf_phys + offs + mb_mod_length, next_space);
+            offs += mb_mod_length;
+            g_free(one_file);
+            tmpl = tmpl->next;
+        }
+    }
+
     /* FIXME: add other tags */
 
     /* The multiboot2 bootrom will add the mmap and end tags. */
@@ -604,6 +701,9 @@ int load_multiboot2(X86MachineState *x86ms,
     /* Set size of multiboot infos */
     multiboot_uint64_t *size = mbs.mb_tags;
     *size = mbs.mb_tags_size;
+
+    /* Free kcmdline */
+    g_free(kcmdline);
 
     /* Display infos */
     mb_debug("qemu: kernel_entry = %#zx\n", (size_t)mh_entry_addr);
