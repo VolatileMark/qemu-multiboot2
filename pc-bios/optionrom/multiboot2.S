@@ -157,6 +157,95 @@ lgdt:
 ljmp32:
 	data32 ljmp	*%gs:GS_PROT_JUMP
 
+find_rsdp:
+.code32
+	read_fw_blob(FW_CFG_FILE_DIR) /* read fw_cfg->files.count field */
+	read_fw(FW_CFG_FILE_DIR_ADDR)	/* get the address at which fw_cfg->files.count was read */
+	mov %eax, %edi
+	push %edi /* save FW_CFG_FILE_DIR_ADDR */
+
+	mov (%edi), %ecx /* get the value of fw_cfg->files.count */
+	bswap %ecx /* convert said value from be into le */
+	push %ecx /* save fw_cfg->files.count */
+	shl $5, %ecx /* compute the size of fw_cfg->files.f[] (multiply by sizeof(FWCfgFile) == 64)*/
+
+	read_fw(FW_CFG_FILE_DIR_SIZE)
+	push %eax /* save count field size */
+	add %eax, %ecx /* add the size of the count field (sizeof(FWCfgFiles) which should be 4) */
+
+	/* this code is just read_fw_blob modified to take in a custom size */
+  mov $FW_CFG_FILE_DIR_DATA, %ax
+  mov $BIOS_CFG_IOPORT_CFG, %edx
+  outw %ax, (%dx)
+  mov $BIOS_CFG_IOPORT_DATA, %dx
+  cld
+	.dc.b 0xf3,0x6c
+
+	pop %eax /* restore fw_cfg->files.count size */
+	pop %ecx /* restore fw_cfg->files.count */
+	pop %edi /* restore FW_CFG_FILE_DIR_ADDR */
+	add %eax, %edi
+	/* find rsdp fw_cfg_file */
+0:
+	mov %edi, %eax
+	add $(4+2+2+9), %eax
+	cmpb $'r', 0(%eax)
+	jne 1f
+	cmpb $'s', 1(%eax)
+	jne 1f
+	cmpb $'d', 2(%eax)
+	jne 1f
+	cmpb $'p', 3(%eax)
+	je 2f
+1:
+	/* go to next fw_cfg_file struct */
+	add $64, %edi
+	loop 0b
+	/* can't find anything, return */
+	ret
+2:
+	/* get the size of the rsdp */
+	mov 0(%edi), %ecx
+	bswap %ecx
+
+	/* get multiboot2 struct address */
+	read_fw(FW_CFG_INITRD_ADDR)
+	mov %ebx
+
+	/* get the fw_cfg device selector of the rsdp */
+	mov 4(%edi), %ax
+	bswap %eax
+	shr $16, %eax
+
+	/* find multiboot2 struct end tag */
+	mov (%ebx), %edi
+	add %ebx, %edi
+	sub $8, %ebx
+
+	/* create multiboot2 rsdp v1 tag by overwriting the end tag */
+	movl $14, (%edi)
+	add $4, %edi
+	movl $8, (%edi)
+	add %ecx, (%edi)
+	add $4, %edi
+
+	/* read rsdp */
+	mov $BIOS_CFG_IOPORT_CFG, %edx
+	outw %ax, (%dx)
+	mov $BIOS_CFG_IOPORT_DATA, %dx
+	cld
+	.dc.b 0xf3,0x6c
+
+	/* create end tag */
+	movl $0, 0(%edi)
+	movl $8, 4(%edi)
+
+	/* update multiboot2 struct size */
+	lea 8(%edi), %eax
+	sub %ebx, %eax
+	mov %eax, (%ebx)
+	ret
+
 prot_mode:
 .code32
 	/* initialize all other segments */
@@ -167,6 +256,8 @@ prot_mode:
 	movl		%eax, %fs
 	movl		%eax, %gs
 
+	call find_rsdp
+	
 	/* Read the kernel and modules into RAM */
 	read_fw_blob(FW_CFG_KERNEL)
 
