@@ -210,7 +210,7 @@ find_rsdp:
 
 	/* get multiboot2 struct address */
 	read_fw(FW_CFG_INITRD_ADDR)
-	mov %ebx
+	mov %eax, %ebx
 
 	/* get the fw_cfg device selector of the rsdp */
 	mov 4(%edi), %ax
@@ -220,7 +220,7 @@ find_rsdp:
 	/* find multiboot2 struct end tag */
 	mov (%ebx), %edi
 	add %ebx, %edi
-	sub $8, %ebx
+	sub $8, %edi
 
 	/* create multiboot2 rsdp v1 tag by overwriting the end tag */
 	movl $14, (%edi)
