@@ -220,14 +220,11 @@ find_rsdp:
 	/* find multiboot2 struct end tag */
 	mov (%ebx), %edi
 	add %ebx, %edi
-	sub $8, %edi
 
 	/* create multiboot2 rsdp v1 tag by overwriting the end tag */
-	movl $14, (%edi)
-	add $4, %edi
-	movl $8, (%edi)
-	add %ecx, (%edi)
-	add $4, %edi
+	movl $14, -8(%edi)
+	movl $8, -4(%edi)
+	add %ecx, -4(%edi)
 
 	/* read rsdp */
 	mov $BIOS_CFG_IOPORT_CFG, %edx
@@ -237,6 +234,8 @@ find_rsdp:
 	.dc.b 0xf3,0x6c
 
 	/* create end tag */
+	add $7, %edi
+	and $~7, %edi
 	movl $0, 0(%edi)
 	movl $8, 4(%edi)
 
