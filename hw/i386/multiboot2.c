@@ -657,11 +657,11 @@ int load_multiboot2(X86MachineState *x86ms,
 
     /* Align to next page */
     /* FIXME: load modules */
+    mbs.mb_buf_size = TARGET_PAGE_ALIGN(mb_kernel_size);
     if (mods) {
         uint32_t offs;
         GList *tmpl = mods;
-        mbs.offset_mods = mb_kernel_size;
-        offs = TARGET_PAGE_ALIGN(mbs.offset_mods);
+        mbs.offset_mods = offs = mb_kernel_size;
         while (tmpl) {
             int mb_mod_length;
             char *next_space, *one_file = tmpl->data;
@@ -680,21 +680,19 @@ int load_multiboot2(X86MachineState *x86ms,
             if (align_modules) {
                 offs = TARGET_PAGE_ALIGN(offs);
             }
-            mbs.mb_buf_size += offs + mb_mod_length;
+            mbs.mb_buf_size = offs + mb_mod_length;
             mbs.mb_buf_size = TARGET_PAGE_ALIGN(mbs.mb_buf_size);
             mbs.mb_buf = g_realloc(mbs.mb_buf, mbs.mb_buf_size);
-            if (load_image_size(one_file, mbs.mb_buf + offs, mb_mod_length) < 0) {
+            if (load_image_size(one_file, (char*)mbs.mb_buf + offs, mb_mod_length) < 0) {
                 error_report("Error loading file: '%s', %s", one_file, strerror(errno));
                 exit(1);
             }
-            mb_add_mod(&mbs, mbs.mb_buf_phys + offs,
-                       mbs.mb_buf_phys + offs + mb_mod_length, next_space);
+            mb_add_mod(&mbs, mh_load_addr + offs,
+                       mh_load_addr + offs + mb_mod_length, tmpl->data);
             offs += mb_mod_length;
-            g_free(one_file);
+            g_free(tmpl->data);
             tmpl = tmpl->next;
         }
-    } else {
-        mbs.mb_buf_size = TARGET_PAGE_ALIGN(mb_kernel_size);
     }
 
     /* FIXME: add other tags */
