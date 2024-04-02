@@ -159,63 +159,39 @@ ljmp32:
 
 find_rsdp:
 .code32
-	read_fw_blob(FW_CFG_FILE_DIR) /* read fw_cfg->files.count field */
-	read_fw(FW_CFG_FILE_DIR_ADDR)	/* get the address at which fw_cfg->files.count was read */
-	mov %eax, %edi
-	push %edi /* save FW_CFG_FILE_DIR_ADDR */
+	xor %edx, %edx
+	movw (0x040e), %dx
+	shll $4, %edx
+	movl $0x40, %ecx
 
-	mov (%edi), %ecx /* get the value of fw_cfg->files.count */
-	bswap %ecx /* convert said value from be into le */
-	push %ecx /* save fw_cfg->files.count */
-	shl $5, %ecx /* compute the size of fw_cfg->files.f[] (multiply by sizeof(FWCfgFile) == 64)*/
+search_loop:
+	cmpl $0x20445352, 0(%edx)
+	jne check_fail
+	cmpl $0x20525450, 4(%edx)
+	je got_rsdp
 
-	read_fw(FW_CFG_FILE_DIR_SIZE)
-	push %eax /* save count field size */
-	add %eax, %ecx /* add the size of the count field (sizeof(FWCfgFiles) which should be 4) */
+check_fail:
+	addl $0x10, %edx
+	loop search_loop
 
-	/* this code is just read_fw_blob modified to take in a custom size */
-  mov $FW_CFG_FILE_DIR_DATA, %ax
-  mov $BIOS_CFG_IOPORT_CFG, %edx
-  outw %ax, (%dx)
-  mov $BIOS_CFG_IOPORT_DATA, %dx
-  cld
-	.dc.b 0xf3,0x6c
+	cmpl $0xfffff, %edx
+	jge no_rsdp
 
-	pop %eax /* restore fw_cfg->files.count size */
-	pop %ecx /* restore fw_cfg->files.count */
-	pop %edi /* restore FW_CFG_FILE_DIR_ADDR */
-	add %eax, %edi
-	/* find rsdp fw_cfg_file */
-0:
-	mov %edi, %eax
-	add $(4+2+2+9), %eax
-	cmpb $'r', 0(%eax)
-	jne 1f
-	cmpb $'s', 1(%eax)
-	jne 1f
-	cmpb $'d', 2(%eax)
-	jne 1f
-	cmpb $'p', 3(%eax)
-	je 2f
-1:
-	/* go to next fw_cfg_file struct */
-	add $64, %edi
-	loop 0b
+	movl $0xe0000, %ecx
+	movl $0x2000, %ecx
+	jmp search_loop
+
 	/* can't find anything, return */
+no_rsdp:
+	jmp no_rsdp
 	ret
-2:
-	/* get the size of the rsdp */
-	mov 0(%edi), %ecx
-	bswap %ecx
+
+got_rsdp:
+	pushl %edx
 
 	/* get multiboot2 struct address */
 	read_fw(FW_CFG_INITRD_ADDR)
 	mov %eax, %ebx
-
-	/* get the fw_cfg device selector of the rsdp */
-	mov 4(%edi), %ax
-	bswap %eax
-	shr $16, %eax
 
 	/* find multiboot2 struct end tag */
 	mov (%ebx), %edi
@@ -224,14 +200,17 @@ find_rsdp:
 	/* create multiboot2 rsdp v1 tag by overwriting the end tag */
 	movl $14, -8(%edi)
 	movl $8, -4(%edi)
+	movl $20, %ecx
 	add %ecx, -4(%edi)
 
-	/* read rsdp */
-	mov $BIOS_CFG_IOPORT_CFG, %edx
-	outw %ax, (%dx)
-	mov $BIOS_CFG_IOPORT_DATA, %dx
-	cld
-	.dc.b 0xf3,0x6c
+	/* copy the rsdp */
+	popl %edx
+copy_loop:
+	movb (%edx), %al
+	movb %al, (%edi)
+	incl %edx
+	incl %edi
+	loop copy_loop
 
 	/* create end tag */
 	add $7, %edi

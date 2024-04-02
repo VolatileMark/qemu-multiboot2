@@ -42,7 +42,6 @@
 #endif
 
 #define MULTIBOOT_MEM 0x8000
-#define MULTIBOOT_FWCFG_TMP_MEM 0x9000
 
 #if MULTIBOOT_MEM > 0xf0000
 #error multiboot struct needs to fit in 16 bit real mode
@@ -500,6 +499,7 @@ static void mb_add_mod(MultibootState *s, hwaddr start, hwaddr end, char *cmdlin
     tag->mod_start = start;
     tag->mod_end = end;
     if (cmdline) {
+        tag->size += strlen(cmdline) + 1;
         strcpy(tag->cmdline, cmdline);
     }
 }
@@ -740,10 +740,6 @@ int load_multiboot2(X86MachineState *x86ms,
     fw_cfg_add_i32(fw_cfg, FW_CFG_INITRD_SIZE, mbs.mb_tags_size);
     fw_cfg_add_bytes(fw_cfg, FW_CFG_INITRD_DATA, mbs.mb_tags,
                      mbs.mb_tags_size);
-
-    /* Variables needed to find RSDP */
-    fw_cfg_add_i32(fw_cfg, FW_CFG_FILE_DIR_ADDR, MULTIBOOT_FWCFG_TMP_MEM);
-    fw_cfg_add_i32(fw_cfg, FW_CFG_FILE_DIR_SIZE, sizeof(FWCfgFiles));
 
     option_rom[nb_option_roms].name = "multiboot2.bin";
     option_rom[nb_option_roms].bootindex = 0;
